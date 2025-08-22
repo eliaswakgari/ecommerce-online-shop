@@ -1,19 +1,22 @@
-import axios from "axios";
-const axiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000", // <-- important
-  withCredentials: true,
-  // Remove default Content-Type to allow multipart/form-data for file uploads
+// src/api/axiosInstance.js
+import axios from 'axios';
+
+const instance = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000', // adjust
+  withCredentials: true, // if backend uses cookie auth
 });
 
-// Basic interceptor to bubble up errors
-axiosInstance.interceptors.response.use(
+instance.interceptors.request.use((config) => {
+  console.debug('[axios] Request:', config.method?.toUpperCase(), config.baseURL + config.url, config.headers);
+  return config;
+});
+
+instance.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
-      // optionally redirect to login or dispatch logout
-    }
+    console.error('[axios] Response error:', err?.response?.status, err?.config?.url, err?.response?.data);
     return Promise.reject(err);
   }
 );
 
-export default axiosInstance;
+export default instance;

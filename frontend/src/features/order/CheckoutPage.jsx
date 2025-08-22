@@ -3,7 +3,7 @@ import { CardElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { useDispatch, useSelector } from "react-redux";
 import Button from "../../components/ui/Button.jsx";
 import { placeOrder, clearPaymentState } from "./orderSlice.js";
-import { clearCart, clearCartState } from "../cart/cartSlice.js";
+import { clearCart} from "../cart/cartSlice.js";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import useCart from "../../hooks/useCart.js";
@@ -67,7 +67,7 @@ export default function CheckoutPage() {
         toast.success("Payment successful! Your order has been placed.");
 
         // Clear cart state immediately
-        dispatch(clearCartState());
+        dispatch(clearCart());
 
         // Also clear cart from backend/localStorage
         dispatch(clearCart());

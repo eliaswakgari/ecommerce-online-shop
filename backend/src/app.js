@@ -1,5 +1,5 @@
 const express = require("express");
-const cookieParser = require("cookie-parser");
+const cookieParser =require("cookie-parser");
 const cors = require("cors");
 const bodyParser = require("body-parser");
 //const logger = require("./config/logger");
@@ -21,7 +21,7 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
 app.use("/uploads", express.static("uploads"));
-
+app.use(bodyParser.json({ limit: "10mb" }));
 // CORS configuration (adjust origins as needed)
 app.use(cors({
   origin: process.env.FRONTEND_URL || "http://localhost:5173",
