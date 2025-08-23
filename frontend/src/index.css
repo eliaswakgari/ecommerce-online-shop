@@ -1,3 +1,13 @@
 @import "tailwindcss";
 
 :root { --brand: #111827; }
+ /* Hide vertical scrollbar but allow scrolling */
+*{
+  overflow-y: scroll;           /* allow vertical scroll */
+  scrollbar-width: none;        /* Firefox */
+  -ms-overflow-style: none;     /* IE 10+ */
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;                /* Chrome, Safari, Opera */
+}

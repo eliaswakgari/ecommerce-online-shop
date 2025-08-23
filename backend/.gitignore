@@ -1,3 +1,11 @@
+# Ignore environment files
 .env
-node_modules
 *.env
+.env.local
+.env.development.local
+
+# Ignore node_modules
+/node_modules
+
+# Ignore log files
+*.log

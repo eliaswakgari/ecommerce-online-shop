@@ -26,13 +26,16 @@ const ProductManagement = () => {
     category: "",
     stock: "",
     description: "",
-    // images will hold File objects when selected
     images: [],
   });
   const [editingId, setEditingId] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
   const [filter, setFilter] = useState("newest");
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(5);
 
   useEffect(() => {
     dispatch(fetchProducts());
@@ -57,17 +60,16 @@ const ProductManagement = () => {
   };
 
   const buildPayload = async () => {
-    // If there are image files selected, build FormData for multipart upload.
     const hasFiles = form.images && form.images.length > 0;
+
     if (!hasFiles) {
-      // plain object payload (JSON)
       return {
         isFormData: false,
         body: {
           name: form.name,
-          price: Number(form.price),
+          price: Number(form.price) || 0,
+          stock: Number(form.stock) || 0,
           category: form.category,
-          stock: Number(form.stock),
           description: form.description,
         },
       };
@@ -75,41 +77,28 @@ const ProductManagement = () => {
 
     const fd = new FormData();
     fd.append("name", form.name);
-    fd.append("price", String(form.price));
+    fd.append("price", String(Number(form.price) || 0));
+    fd.append("stock", String(Number(form.stock) || 0));
     fd.append("category", form.category);
-    fd.append("stock", String(form.stock));
     fd.append("description", form.description);
-    // append each file as 'images' (backend should accept array)
     form.images.forEach((file) => fd.append("images", file));
     return { isFormData: true, body: fd };
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("Submitting form:", form);
     try {
       const payload = await buildPayload();
+
       if (editingId) {
-        console.log("Updating product:", editingId, form);
-        // pass FormData or JSON object according to payload
         await dispatch(updateProduct({ id: editingId, body: payload.body, isFormData: payload.isFormData })).unwrap();
         toast.success("Product updated successfully!");
       } else {
-        console.log("Creating product:", form);
-        await dispatch(createProduct(payload.isFormData ? payload.body : payload.body)).unwrap();
+        await dispatch(createProduct({ body: payload.body, isFormData: payload.isFormData })).unwrap();
         toast.success("Product created successfully!");
       }
-      setForm({
-        name: "",
-        price: "",
-        category: "",
-        stock: "",
-        description: "",
-        images: [],
-      });
-      setEditingId(null);
-      setShowForm(false);
-      // Refresh the products list
+
+      resetForm();
       dispatch(fetchProducts());
     } catch (err) {
       console.error("Error saving product:", err);
@@ -121,22 +110,20 @@ const ProductManagement = () => {
     setForm({
       name: product.name ?? "",
       price: product.price ?? "",
-      category: product.category ?? "",
       stock: product.stock ?? "",
+      category: product.category ?? "",
       description: product.description ?? "",
-      images: [], // user can add new images; existing images are shown in table as thumbnails
+      images: [],
     });
     setEditingId(product._id);
     setShowForm(true);
   };
 
   const confirmDelete = async () => {
-    console.log("Deleting product:", deleteId);
     try {
       await dispatch(deleteProduct(deleteId)).unwrap();
       toast.success("Product deleted successfully!");
       setDeleteId(null);
-      // Refresh the products list
       dispatch(fetchProducts());
     } catch (err) {
       console.error("Error deleting product:", err);
@@ -145,19 +132,11 @@ const ProductManagement = () => {
   };
 
   const resetForm = () => {
-    setForm({
-      name: "",
-      price: "",
-      category: "",
-      stock: "",
-      description: "",
-      images: [],
-    });
+    setForm({ name: "", price: "", category: "", stock: "", description: "", images: [] });
     setEditingId(null);
     setShowForm(false);
   };
 
-  // Sorting/filtering helper
   const getSortedProducts = () => {
     const arr = Array.isArray(products) ? [...products] : [];
     switch (filter) {
@@ -171,7 +150,6 @@ const ProductManagement = () => {
         return arr.sort((a, b) => (Number(b.stock) || 0) - (Number(a.stock) || 0));
       case "newest":
       default:
-        // try to use createdAt, fallback to _id (objectId sortable)
         return arr.sort((a, b) => {
           if (a.createdAt && b.createdAt) return new Date(b.createdAt) - new Date(a.createdAt);
           if (a._id && b._id) return String(b._id).localeCompare(String(a._id));
@@ -181,30 +159,28 @@ const ProductManagement = () => {
   };
 
   const thumbFor = (p) => {
-    // Prefer array of images, then single image fields
     const src =
       (p.images && p.images.length > 0 && (typeof p.images[0] === "string" ? p.images[0] : p.images[0]?.url)) ||
-      p.image ||
-      p.imageUrl ||
-      p.thumbnail ||
-      "";
+      p.image || p.imageUrl || p.thumbnail || "";
     return src || placeholder;
   };
 
   const sortedProducts = getSortedProducts();
 
+  // Pagination
+  const totalPages = Math.ceil(sortedProducts.length / itemsPerPage);
+  const paginatedProducts = sortedProducts.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
   return (
     <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
+      {/* Top controls */}
+      <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
         <h1 className="text-2xl font-bold">Product Management</h1>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
+          {/* Sort */}
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-600">Sort:</label>
-            <select
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="border rounded px-3 py-2"
-            >
+            <select value={filter} onChange={(e) => setFilter(e.target.value)} className="border rounded px-3 py-2">
               <option value="newest">Newest</option>
               <option value="price-asc">Price: Low to High</option>
               <option value="price-desc">Price: High to Low</option>
@@ -213,18 +189,26 @@ const ProductManagement = () => {
             </select>
           </div>
 
-          <button
-            onClick={() => {
-              resetForm();
-              setShowForm(true);
-            }}
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-          >
-            Add Product
-          </button>
+          {/* Items per page */}
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-600">Items per page:</label>
+            <select
+              value={itemsPerPage}
+              onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+              className="border rounded px-3 py-2"
+            >
+              <option value={5}>5</option>
+              <option value={10}>10</option>
+              <option value={15}>15</option>
+              <option value={20}>20</option>
+            </select>
+          </div>
+
+          <button onClick={() => { resetForm(); setShowForm(true); }} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Add Product</button>
         </div>
       </div>
 
+      {/* Table */}
       {loading ? (
         <Loader />
       ) : (
@@ -241,43 +225,24 @@ const ProductManagement = () => {
               </tr>
             </thead>
             <tbody>
-              {sortedProducts?.map((p) => (
+              {paginatedProducts.map((p) => (
                 <tr key={p._id}>
                   <td className="px-4 py-2 border">
-                    <img
-                      src={thumbFor(p)}
-                      alt={p.name}
-                      className="w-16 h-12 object-cover rounded"
-                      onError={(e) => {
-                        e.currentTarget.src = placeholder;
-                      }}
-                    />
+                    <img src={thumbFor(p)} alt={p.name} className="w-16 h-12 object-cover rounded" onError={(e) => e.currentTarget.src = placeholder} />
                   </td>
                   <td className="px-4 py-2 border">{p.name}</td>
                   <td className="px-4 py-2 border">${p.price}</td>
                   <td className="px-4 py-2 border">{p.category}</td>
                   <td className="px-4 py-2 border">{p.stock}</td>
                   <td className="px-4 py-2 border space-x-2">
-                    <button
-                      onClick={() => handleEdit(p)}
-                      className="bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => setDeleteId(p._id)}
-                      className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
-                    >
-                      Delete
-                    </button>
+                    <button onClick={() => handleEdit(p)} className="bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600">Edit</button>
+                    <button onClick={() => setDeleteId(p._id)} className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700">Delete</button>
                   </td>
                 </tr>
               ))}
-              {sortedProducts?.length === 0 && (
+              {paginatedProducts.length === 0 && (
                 <tr>
-                  <td colSpan="6" className="text-center py-4">
-                    No products found.
-                  </td>
+                  <td colSpan="6" className="text-center py-4">No products found.</td>
                 </tr>
               )}
             </tbody>
@@ -285,92 +250,39 @@ const ProductManagement = () => {
         </div>
       )}
 
+      {/* Pagination */}
+      <div className="flex justify-between items-center mt-4 flex-wrap gap-2">
+        <span className="text-sm text-gray-600">Page {currentPage} of {totalPages || 1}</span>
+        <div className="flex gap-2">
+          <button onClick={() => setCurrentPage(1)} disabled={currentPage === 1} className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 disabled:opacity-50">&laquo; First</button>
+          <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 disabled:opacity-50">Prev</button>
+          <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 disabled:opacity-50">Next</button>
+          <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages} className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 disabled:opacity-50">Last &raquo;</button>
+        </div>
+      </div>
+
       {/* Form Modal */}
       <Modal open={showForm} onClose={resetForm}>
-        <h2 className="text-xl font-bold mb-4">
-          {editingId ? "Edit Product" : "Add Product"}
-        </h2>
+        <h2 className="text-xl font-bold mb-4">{editingId ? "Edit Product" : "Add Product"}</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            type="text"
-            name="name"
-            placeholder="Name"
-            value={form.name}
-            onChange={handleChange}
-            required
-            className="w-full border p-2 rounded"
-          />
-          <input
-            type="number"
-            name="price"
-            placeholder="Price"
-            value={form.price}
-            onChange={handleChange}
-            required
-            min="0"
-            step="0.01"
-            className="w-full border p-2 rounded"
-          />
-          <input
-            type="text"
-            name="category"
-            placeholder="Category"
-            value={form.category}
-            onChange={handleChange}
-            required
-            className="w-full border p-2 rounded"
-          />
-          <input
-            type="number"
-            name="stock"
-            placeholder="Stock"
-            value={form.stock}
-            onChange={handleChange}
-            required
-            min="0"
-            className="w-full border p-2 rounded"
-          />
-          <textarea
-            name="description"
-            placeholder="Description"
-            value={form.description}
-            onChange={handleChange}
-            className="w-full border p-2 rounded"
-            rows="3"
-          ></textarea>
+          <input type="text" name="name" placeholder="Name" value={form.name} onChange={handleChange} required className="w-full border p-2 rounded"/>
+          <input type="number" name="price" placeholder="Price" value={form.price} onChange={handleChange} required min="0" step="0.01" className="w-full border p-2 rounded"/>
+          <input type="text" name="category" placeholder="Category" value={form.category} onChange={handleChange} required className="w-full border p-2 rounded"/>
+          <input type="number" name="stock" placeholder="Stock" value={form.stock} onChange={handleChange} required min="0" className="w-full border p-2 rounded"/>
+          <textarea name="description" placeholder="Description" value={form.description} onChange={handleChange} className="w-full border p-2 rounded" rows="3"></textarea>
 
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">
-              Product Images (up to {MAX_IMAGES})
-            </label>
-            <input
-              type="file"
-              name="images"
-              accept="image/*"
-              multiple
-              onChange={handleChange}
-              className="w-full p-2 rounded border"
-            />
-            <p className="text-xs text-gray-500">
-              You can upload up to {MAX_IMAGES} images. Selected images will be uploaded and replace or add to existing product images (depending on backend logic).
-            </p>
-
-            {/* Previews */}
-            {form.images && form.images.length > 0 && (
+            <label className="block text-sm font-medium text-gray-700">Product Images (up to {MAX_IMAGES})</label>
+            <input type="file" name="images" accept="image/*" multiple onChange={handleChange} className="w-full p-2 rounded border"/>
+            <p className="text-xs text-gray-500">You can upload up to {MAX_IMAGES} images.</p>
+            {form.images.length > 0 && (
               <div className="flex flex-wrap gap-3 mt-2">
                 {form.images.map((file, idx) => {
                   const url = typeof file === "string" ? file : URL.createObjectURL(file);
                   return (
                     <div key={idx} className="relative w-20 h-16 rounded overflow-hidden border">
                       <img src={url} alt={`preview-${idx}`} className="w-full h-full object-cover" />
-                      <button
-                        type="button"
-                        onClick={() => removePreview(idx)}
-                        className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center"
-                        title="Remove"
-                      >
-                        ×
-                      </button>
+                      <button type="button" onClick={() => removePreview(idx)} className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center" title="Remove">×</button>
                     </div>
                   );
                 })}
@@ -379,41 +291,18 @@ const ProductManagement = () => {
           </div>
 
           <div className="flex gap-2 pt-2">
-            <button
-              type="submit"
-              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-            >
-              {editingId ? "Update" : "Create"}
-            </button>
-            <button
-              type="button"
-              onClick={resetForm}
-              className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
-            >
-              Cancel
-            </button>
+            <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">{editingId ? "Update" : "Create"}</button>
+            <button type="button" onClick={resetForm} className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">Cancel</button>
           </div>
         </form>
       </Modal>
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Modal */}
       <Modal open={!!deleteId} onClose={() => setDeleteId(null)}>
-        <h2 className="text-lg font-semibold mb-4">
-          Are you sure you want to delete this product?
-        </h2>
+        <h2 className="text-lg font-semibold mb-4">Are you sure you want to delete this product?</h2>
         <div className="flex justify-end space-x-4">
-          <button
-            onClick={() => setDeleteId(null)}
-            className="bg-gray-300 px-4 py-2 rounded hover:bg-gray-400"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={confirmDelete}
-            className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-          >
-            Delete
-          </button>
+          <button onClick={() => setDeleteId(null)} className="bg-gray-300 px-4 py-2 rounded hover:bg-gray-400">Cancel</button>
+          <button onClick={confirmDelete} className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">Delete</button>
         </div>
       </Modal>
     </div>
