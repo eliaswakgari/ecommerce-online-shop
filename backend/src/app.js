@@ -1,9 +1,15 @@
 const express = require("express");
-const cookieParser =require("cookie-parser");
+const cookieParser = require("cookie-parser");
 const cors = require("cors");
+const path = require("path");
 const bodyParser = require("body-parser");
+const session = require('express-session');
+const passport = require('passport');
 //const logger = require("./config/logger");
 const errorHandler = require("./middleware/errorMiddleware");
+
+// Initialize Passport config
+require('./config/passport');
 
 const authRoutes = require("./routes/authRoutes");
 const productRoutes = require("./routes/productRoutes");
@@ -20,8 +26,24 @@ const app = express();
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
-app.use("/uploads", express.static("uploads"));
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 app.use(bodyParser.json({ limit: "10mb" }));
+
+// Session configuration for Passport
+app.use(session({
+  secret: process.env.JWT_SECRET || 'your-secret-key',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+}));
+
+// Initialize Passport
+app.use(passport.initialize());
+app.use(passport.session());
+
 // CORS configuration (adjust origins as needed)
 app.use(cors({
   origin: process.env.FRONTEND_URL || "http://localhost:5173",

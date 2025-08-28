@@ -250,7 +250,7 @@ export default function OrderManagement() {
                       </span>
                     </div>
                     {order.isPaid && (
-                      <div className="text-xs text-green-600 mt-1">✓ Paid</div>
+                      <div className="text-xs text-green-600 mt-1">✓ Completed</div>
                     )}
                     {order.isDelivered && (
                       <div className="text-xs text-blue-600">✓ Delivered</div>
@@ -367,7 +367,7 @@ export default function OrderManagement() {
                     </span>
                   </div>
                   {selectedOrder.isPaid && (
-                    <div className="text-xs text-green-600">✓ Paid on {selectedOrder.paidAt ? new Date(selectedOrder.paidAt).toLocaleDateString() : 'N/A'}</div>
+                    <div className="text-xs text-green-600">✓ Completed on {selectedOrder.paidAt ? new Date(selectedOrder.paidAt).toLocaleDateString() : 'N/A'}</div>
                   )}
                   {selectedOrder.isDelivered && (
                     <div className="text-xs text-blue-600">✓ Delivered on {selectedOrder.deliveredAt ? new Date(selectedOrder.deliveredAt).toLocaleDateString() : 'N/A'}</div>

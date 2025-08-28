@@ -2,15 +2,30 @@ import React, { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { createCoupon } from "./adminSlice.js";
 import Button from "../../components/ui/Button.jsx";
+import { toast } from "react-hot-toast";
 
 export default function CouponManagement() {
   const dispatch = useDispatch();
   const { creatingCoupon } = useSelector(s=>s.admin);
   const [form, setForm] = useState({ code:"", discountType:"percentage", amount:10, expirationDate:"", usageLimit:100 });
-
-  const submit = (e)=>{
+  const submit = (e) => {
     e.preventDefault();
-    dispatch(createCoupon(form));
+
+    dispatch(createCoupon(form))
+      .unwrap()
+      .then(() => {
+        toast.success("Coupon created successfully!");
+        // Reset only code and expirationDate
+        setForm(prev => ({
+          ...prev,
+          code: "",
+           amount:10,
+           expirationDate:"",
+           usageLimit:100 
+          
+        }));
+      })
+      .catch((err) => toast.error(err));
   };
 
   return (

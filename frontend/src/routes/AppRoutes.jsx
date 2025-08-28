@@ -57,13 +57,7 @@ export default function AppRoutes() {
       {/* Admin routes with proper wildcard */}
       <Route path="/admin/*" element={
         <ProtectedRoute adminOnly>
-          <Routes>
-            <Route index element={<AdminDashboardPage />} />
-            <Route path="products" element={<ProductManagement />} />
-            <Route path="orders" element={<OrderManagement />} />
-            <Route path="coupons" element={<CouponManagement />} />
-            <Route path="analytics" element={<AnalyticsPage />} />
-          </Routes>
+          <AdminDashboardPage />
         </ProtectedRoute>
       } />
 

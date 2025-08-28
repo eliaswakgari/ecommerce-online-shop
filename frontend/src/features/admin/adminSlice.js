@@ -1,17 +1,18 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
+import { 
+  getDetailedProductsApi, 
+  getDetailedOrdersApi, 
+  getDetailedSalesApi 
+} from "../../api/analyticsApi.js";
 
 // ----------------- API Endpoints -----------------
-const ADMIN_ANALYTICS_URL = "/api/admin/analytics";
-const COUPONS_URL = "/api/admin/coupons";
-
-const USERS_COUNT_URL = "/api/users/count";
-const PRODUCTS_COUNT_URL = "/api/products/count";
-const ORDERS_COUNT_URL = "/api/orders/count";
+const ANALYTICS_BASE = "/api/analytics";
+const COUPONS_URL = "/api/coupons";
 
 // ----------------- Helper: fetchJson -----------------
 async function fetchJson(url, options = {}) {
   const res = await fetch(url, {
-    credentials: "include",
+    credentials: "include", // include cookies (JWT)
     headers: { "content-type": "application/json" },
     ...options,
   });
@@ -32,66 +33,28 @@ export const fetchAnalytics = createAsyncThunk(
   "admin/fetchAnalytics",
   async (_, thunkAPI) => {
     try {
-      const analytics = await fetchJson(ADMIN_ANALYTICS_URL);
-      return {
-        sales: analytics.sales ?? analytics.salesData ?? {},
-        ordersByDate: analytics.ordersByDate ?? [],
-        topProducts: analytics.topProducts ?? [],
-        usersCount: analytics.usersCount ?? analytics.users ?? analytics.totalUsers ?? null,
-        productsCount: analytics.productsCount ?? analytics.totalProducts ?? null,
-        ordersCount: analytics.ordersCount ?? analytics.totalOrders ?? null,
-      };
-    } catch (err) {
-      try {
-        const [usersResp, productsResp, ordersResp] = await Promise.allSettled([
-          fetchJson(USERS_COUNT_URL).catch(() => null),
-          fetchJson(PRODUCTS_COUNT_URL).catch(() => null),
-          fetchJson(ORDERS_COUNT_URL).catch(() => null),
+      // Parallel fetch all analytics endpoints
+      const [salesRes, topProductsRes, ordersByDateRes, usersRes, productsRes, ordersRes] =
+        await Promise.all([
+          fetchJson(`${ANALYTICS_BASE}/sales`),
+          fetchJson(`${ANALYTICS_BASE}/top-products`),
+          fetchJson(`${ANALYTICS_BASE}/orders-by-date`),
+          fetchJson(`${ANALYTICS_BASE}/users/count`),
+          fetchJson(`${ANALYTICS_BASE}/products/count`),
+          fetchJson(`${ANALYTICS_BASE}/orders/count`),
         ]);
 
-        const usersCount =
-          usersResp?.status === "fulfilled"
-            ? usersResp.value.count ?? usersResp.value.total ?? usersResp.value
-            : null;
-        const productsCount =
-          productsResp?.status === "fulfilled"
-            ? productsResp.value.count ?? productsResp.value.total ?? productsResp.value
-            : null;
-        const ordersCount =
-          ordersResp?.status === "fulfilled"
-            ? ordersResp.value.count ?? ordersResp.value.total ?? ordersResp.value
-            : null;
-
-        let sales = {};
-        let ordersByDate = [];
-        let topProducts = [];
-        try {
-          const partial = await fetchJson(ADMIN_ANALYTICS_URL);
-          sales = partial.sales ?? {};
-          ordersByDate = partial.ordersByDate ?? [];
-          topProducts = partial.topProducts ?? [];
-        } catch (_) {
-          // ignore
-        }
-
-        return {
-          sales,
-          ordersByDate,
-          topProducts,
-          usersCount: usersCount ?? 0,
-          productsCount: productsCount ?? 0,
-          ordersCount: ordersCount ?? (sales?.ordersCount ?? 0),
-        };
-      } catch (_) {
-        return {
-          sales: {},
-          ordersByDate: [],
-          topProducts: [],
-          usersCount: 0,
-          productsCount: 0,
-          ordersCount: 0,
-        };
-      }
+      return {
+        sales: salesRes ?? { totalSales: 0, ordersCount: 0 },
+        topProducts: topProductsRes ?? [],
+        ordersByDate: ordersByDateRes ?? [],
+        usersCount: usersRes?.count ?? 0,
+        productsCount: productsRes?.count ?? 0,
+        ordersCount: ordersRes?.count ?? 0,
+      };
+    } catch (err) {
+      console.error("Fetch analytics failed:", err);
+      return thunkAPI.rejectWithValue(err.message || "Failed to fetch analytics");
     }
   }
 );
@@ -107,7 +70,50 @@ export const createCoupon = createAsyncThunk(
       });
       return res; // backend should return created coupon
     } catch (err) {
+      console.error("Create coupon error:", err);
       return thunkAPI.rejectWithValue(err.message || "Failed to create coupon");
+    }
+  }
+);
+
+// ✅ Fetch detailed products analytics
+export const fetchDetailedProducts = createAsyncThunk(
+  "admin/fetchDetailedProducts",
+  async (period = 'all', thunkAPI) => {
+    try {
+      const response = await getDetailedProductsApi(period);
+      return response.data;
+    } catch (err) {
+      console.error("Fetch detailed products error:", err);
+      return thunkAPI.rejectWithValue(err.message || "Failed to fetch products analytics");
+    }
+  }
+);
+
+// ✅ Fetch detailed orders analytics
+export const fetchDetailedOrders = createAsyncThunk(
+  "admin/fetchDetailedOrders",
+  async (period = 'all', thunkAPI) => {
+    try {
+      const response = await getDetailedOrdersApi(period);
+      return response.data;
+    } catch (err) {
+      console.error("Fetch detailed orders error:", err);
+      return thunkAPI.rejectWithValue(err.message || "Failed to fetch orders analytics");
+    }
+  }
+);
+
+// ✅ Fetch detailed sales analytics
+export const fetchDetailedSales = createAsyncThunk(
+  "admin/fetchDetailedSales",
+  async (period = 'all', thunkAPI) => {
+    try {
+      const response = await getDetailedSalesApi(period);
+      return response.data;
+    } catch (err) {
+      console.error("Fetch detailed sales error:", err);
+      return thunkAPI.rejectWithValue(err.message || "Failed to fetch sales analytics");
     }
   }
 );
@@ -126,6 +132,21 @@ const initialState = {
   // coupon-related
   creatingCoupon: false,
   coupons: [],
+
+  // detailed analytics
+  detailedProducts: [],
+  detailedOrders: [],
+  detailedSales: { dailySales: [], categorySales: [] },
+  loadingDetailed: {
+    products: false,
+    orders: false,
+    sales: false,
+  },
+  errorDetailed: {
+    products: null,
+    orders: null,
+    sales: null,
+  },
 };
 
 // ----------------- Slice -----------------
@@ -148,14 +169,14 @@ const adminSlice = createSlice({
         state.sales = payload.sales ?? {};
         state.ordersByDate = payload.ordersByDate ?? [];
         state.topProducts = payload.topProducts ?? [];
-        state.usersCount = payload.usersCount ?? state.usersCount ?? 0;
-        state.productsCount = payload.productsCount ?? state.productsCount ?? 0;
+        state.usersCount = payload.usersCount ?? 0;
+        state.productsCount = payload.productsCount ?? 0;
         state.ordersCount =
-          payload.ordersCount ?? state.ordersCount ?? (payload.sales?.ordersCount ?? 0);
+          payload.ordersCount ?? (payload.sales?.ordersCount ?? 0);
       })
       .addCase(fetchAnalytics.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.error?.message ?? "Failed to load analytics";
+        state.error = action.payload || "Failed to load analytics";
       });
 
     // Create Coupon
@@ -173,6 +194,51 @@ const adminSlice = createSlice({
       .addCase(createCoupon.rejected, (state, action) => {
         state.creatingCoupon = false;
         state.error = action.payload || "Failed to create coupon";
+      });
+
+    // Detailed Products Analytics
+    builder
+      .addCase(fetchDetailedProducts.pending, (state) => {
+        state.loadingDetailed.products = true;
+        state.errorDetailed.products = null;
+      })
+      .addCase(fetchDetailedProducts.fulfilled, (state, action) => {
+        state.loadingDetailed.products = false;
+        state.detailedProducts = action.payload || [];
+      })
+      .addCase(fetchDetailedProducts.rejected, (state, action) => {
+        state.loadingDetailed.products = false;
+        state.errorDetailed.products = action.payload || "Failed to load products analytics";
+      });
+
+    // Detailed Orders Analytics
+    builder
+      .addCase(fetchDetailedOrders.pending, (state) => {
+        state.loadingDetailed.orders = true;
+        state.errorDetailed.orders = null;
+      })
+      .addCase(fetchDetailedOrders.fulfilled, (state, action) => {
+        state.loadingDetailed.orders = false;
+        state.detailedOrders = action.payload || [];
+      })
+      .addCase(fetchDetailedOrders.rejected, (state, action) => {
+        state.loadingDetailed.orders = false;
+        state.errorDetailed.orders = action.payload || "Failed to load orders analytics";
+      });
+
+    // Detailed Sales Analytics
+    builder
+      .addCase(fetchDetailedSales.pending, (state) => {
+        state.loadingDetailed.sales = true;
+        state.errorDetailed.sales = null;
+      })
+      .addCase(fetchDetailedSales.fulfilled, (state, action) => {
+        state.loadingDetailed.sales = false;
+        state.detailedSales = action.payload || { dailySales: [], categorySales: [] };
+      })
+      .addCase(fetchDetailedSales.rejected, (state, action) => {
+        state.loadingDetailed.sales = false;
+        state.errorDetailed.sales = action.payload || "Failed to load sales analytics";
       });
   },
 });

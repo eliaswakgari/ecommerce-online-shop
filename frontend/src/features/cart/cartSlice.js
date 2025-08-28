@@ -2,7 +2,6 @@ import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { addToCartApi, getCartApi, removeCartItemApi, updateCartItemApi, clearCartApi } from "../../api/cartApi.js";
 import toast from "react-hot-toast";
 
-// Guest cart localStorage key
 const GUEST_CART_KEY = "guest_cart";
 
 const getGuestCart = () => {
@@ -38,85 +37,127 @@ const initialState = {
   isGuest: false,
 };
 
-/**
- * Normalizes incoming cart items (from server or guest store) and ensures unique keys.
- */
-const normalizeAndEnsureUniqueKeys = (rawItems = []) => {
+const normalizeAndEnsureUniqueKeys = (rawItems = [], isBackendCart = false) => {
+  console.log('🔄 Normalizing cart items:', rawItems.length, 'items', 'isBackendCart:', isBackendCart);
+  
+  if (!rawItems || rawItems.length === 0) {
+    return [];
+  }
+
   const normalized = rawItems.map((raw, idx) => {
-    const backendId = raw._id ?? raw.id ?? raw.backendId ?? null;
-    const productObj = raw.product ?? raw.productDetail ?? null;
-    const productId = raw.productId ?? (productObj && (productObj._id || productObj.id)) ?? null;
-    const price = Number(raw.price ?? (productObj && productObj.price) ?? raw.unitPrice ?? 0) || 0;
-    const quantity = Number(raw.quantity ?? raw.qty ?? raw.count ?? 0) || 0;
-
-    const keyForReact = backendId ? String(backendId) : (productId ? `${productId}-${idx}` : `tmp-${idx}-${Date.now()}`);
-
-    return {
-      _raw: raw,
-      backendId,
+    console.log(`Processing item ${idx}:`, {
+      raw_id: raw._id,
+      productId: raw.productId,
+      product: raw.product ? { _id: raw.product._id, name: raw.product.name } : null,
+      fullRawItem: raw // Show complete structure
+    });
+    
+    // For backend cart items, each item has its own MongoDB subdocument _id
+    const cartItemId = raw._id; // This is the cart item's unique MongoDB _id
+    const productObj = raw.product;
+    const productId = raw.productId || (productObj?._id);
+    const price = Number(raw.price || productObj?.price || 0);
+    const quantity = Number(raw.quantity || 1);
+    
+    console.log(`Item ${idx} analysis:`, {
+      hasCartItemId: !!cartItemId,
+      cartItemId,
       productId,
-      product: productObj,
-      price,
-      quantity,
-      keyForReact,
+      isBackendItem: isBackendCart
+    });
+    
+    return { 
+      _raw: raw, 
+      cartItemId,
+      productId,
+      product: productObj, 
+      price, 
+      quantity
     };
   });
 
-  const mergedBy = new Map();
-  normalized.forEach((it) => {
-    const mergeKey = it.backendId ? `b:${it.backendId}` : (it.productId ? `p:${it.productId}` : `k:${it.keyForReact}`);
-    if (mergedBy.has(mergeKey)) {
-      const existing = mergedBy.get(mergeKey);
-      existing.quantity = existing.quantity + it.quantity;
-      existing._raw = existing._raw && existing._raw.concat ? existing._raw.concat(it._raw) : existing._raw;
-    } else {
-      mergedBy.set(mergeKey, { ...it });
-    }
-  });
+  console.log('📦 Cart type:', isBackendCart ? 'Backend (authenticated)' : 'Guest (localStorage)');
+  
+  let finalItems;
+  if (isBackendCart) {
+    // Backend cart items - each should have unique MongoDB _id
+    finalItems = normalized.map((it, idx) => {
+      // For backend carts, if cartItemId is missing, generate one from productId + index
+      // This handles cases where backend doesn't send cart item IDs properly
+      const backendId = it.cartItemId || `backend-${it.productId}-${idx}`;
+      
+      console.log(`Creating backend cart item ${idx}:`, {
+        originalCartItemId: it.cartItemId,
+        generatedBackendId: backendId,
+        productId: it.productId
+      });
+      
+      return { 
+        _id: backendId,            // Use cart item ID or generated ID as React key
+        backendId: backendId,      // Store for API calls  
+        productId: it.productId, 
+        product: it.product, 
+        price: it.price, 
+        quantity: it.quantity, 
+        keyForReact: backendId,
+        _raw: it._raw 
+      };
+    });
+  } else {
+    // Guest cart items - merge by productId since guest can have duplicates
+    const mergedBy = new Map();
+    normalized.forEach((it, idx) => {
+      const mergeKey = it.productId || `temp-${idx}`;
+      if (mergedBy.has(mergeKey)) {
+        const existing = mergedBy.get(mergeKey);
+        existing.quantity += it.quantity;
+      } else {
+        mergedBy.set(mergeKey, { ...it });
+      }
+    });
 
-  const items = Array.from(mergedBy.values()).map((it, idx) => {
-    const _id = it.backendId ?? it.productId ?? `tmp-${idx}`;
-    return {
-      _id,
-      backendId: it.backendId,
-      productId: it.productId,
-      product: it.product,
-      price: it.price,
-      quantity: it.quantity,
-      keyForReact: it.backendId ? String(it.backendId) : `${it.productId ?? "tmp"}-${idx}`,
-      _raw: it._raw,
-    };
-  });
+    finalItems = Array.from(mergedBy.values()).map((it, idx) => {
+      const tempId = it.productId || `guest-${idx}`;
+      return { 
+        _id: tempId,
+        backendId: null,           // Guest items have no backend ID
+        productId: it.productId, 
+        product: it.product, 
+        price: it.price, 
+        quantity: it.quantity, 
+        keyForReact: tempId,
+        _raw: it._raw 
+      };
+    });
+  }
 
-  const seen = new Map();
-  items.forEach((it, index) => {
-    let k = it.keyForReact;
-    if (seen.has(k)) {
-      let count = seen.get(k) + 1;
-      seen.set(k, count);
-      k = `${k}-${count}`;
-      it.keyForReact = k;
-    } else {
-      seen.set(k, 0);
-    }
-  });
+  console.log('✅ Normalized cart items:', finalItems.map(it => ({
+    _id: it._id,
+    backendId: it.backendId,
+    productId: it.productId,
+    quantity: it.quantity
+  })));
 
-  return items;
+  return finalItems;
 };
 
-const calcSubtotal = (items = []) =>
-  items.reduce((sum, it) => sum + Number(it.price || (it.product && it.product.price) || 0) * Number(it.quantity || 0), 0);
+const calcSubtotal = (items = []) => {
+  return items.reduce((sum, it) => {
+    const price = Number(it.price ?? it.product?.price ?? 0) || 0;
+    const quantity = Number(it.quantity ?? 0) || 0;
+    return sum + (price * quantity);
+  }, 0);
+};
 
 export const fetchCart = createAsyncThunk("cart/fetch", async (_, thunkAPI) => {
   const { auth } = thunkAPI.getState();
-
   if (!auth || !auth.user) {
     const guestCart = getGuestCart();
     return { items: guestCart.items || [], totalAmount: guestCart.totalAmount || 0, isGuest: true };
   }
-
   try {
     const { data } = await getCartApi();
+    console.log('📦 Raw backend cart response:', data);
     return { ...data, isGuest: false };
   } catch (e) {
     return thunkAPI.rejectWithValue(e?.response?.data?.message || e.message);
@@ -125,7 +166,6 @@ export const fetchCart = createAsyncThunk("cart/fetch", async (_, thunkAPI) => {
 
 export const addItem = createAsyncThunk("cart/add", async (payload, thunkAPI) => {
   const { auth } = thunkAPI.getState();
-
   if (!auth || !auth.user) {
     const guestCart = getGuestCart();
     const idx = guestCart.items.findIndex((i) => i.productId === payload.productId);
@@ -133,23 +173,15 @@ export const addItem = createAsyncThunk("cart/add", async (payload, thunkAPI) =>
       guestCart.items[idx].quantity += payload.quantity;
       guestCart.items[idx].totalPrice = (guestCart.items[idx].price || 0) * guestCart.items[idx].quantity;
     } else {
-      guestCart.items.push({
-        productId: payload.productId,
-        quantity: payload.quantity,
-        price: payload.price || 0,
-        totalPrice: (payload.price || 0) * payload.quantity,
-      });
+      guestCart.items.push({ productId: payload.productId, quantity: payload.quantity, price: payload.price || 0, totalPrice: (payload.price || 0) * payload.quantity });
     }
     guestCart.totalAmount = guestCart.items.reduce((s, it) => s + (it.totalPrice || it.price * it.quantity || 0), 0);
     saveGuestCart(guestCart);
     toast.success("Added to cart");
     return { items: guestCart.items, totalAmount: guestCart.totalAmount, isGuest: true };
   }
-
   try {
-    const apiPayload = { productId: payload.productId, quantity: payload.quantity };
-    if (payload.reviewData) apiPayload.reviewData = payload.reviewData;
-    const { data } = await addToCartApi(apiPayload);
+    const { data } = await addToCartApi({ productId: payload.productId, quantity: payload.quantity });
     toast.success("Added to cart");
     return { ...data, isGuest: false };
   } catch (e) {
@@ -159,7 +191,6 @@ export const addItem = createAsyncThunk("cart/add", async (payload, thunkAPI) =>
 
 export const updateItemQty = createAsyncThunk("cart/update", async ({ id, quantity }, thunkAPI) => {
   const { auth } = thunkAPI.getState();
-
   if (!auth || !auth.user) {
     const guestCart = getGuestCart();
     const idx = guestCart.items.findIndex((i) => i.productId === id);
@@ -172,7 +203,6 @@ export const updateItemQty = createAsyncThunk("cart/update", async ({ id, quanti
     }
     return thunkAPI.rejectWithValue("Item not found in guest cart");
   }
-
   try {
     const { data } = await updateCartItemApi(id, { quantity });
     return { ...data, isGuest: false };
@@ -183,7 +213,6 @@ export const updateItemQty = createAsyncThunk("cart/update", async ({ id, quanti
 
 export const removeItem = createAsyncThunk("cart/remove", async (id, thunkAPI) => {
   const { auth } = thunkAPI.getState();
-
   if (!auth || !auth.user) {
     const guestCart = getGuestCart();
     guestCart.items = (guestCart.items || []).filter((i) => i.productId !== id);
@@ -192,7 +221,6 @@ export const removeItem = createAsyncThunk("cart/remove", async (id, thunkAPI) =
     toast.success("Removed from cart");
     return { items: guestCart.items, totalAmount: guestCart.totalAmount, isGuest: true };
   }
-
   try {
     const { data } = await removeCartItemApi(id);
     toast.success("Removed from cart");
@@ -227,56 +255,63 @@ const slice = createSlice({
       state.loading = false;
       state.error = null;
     },
-
     updateLocalItem(state, action) {
       const { id, quantity } = action.payload;
-      const idx = state.items.findIndex(
-        (it) => it._id === id || it.backendId === id || it.productId === id || it.id === id
-      );
+      const idx = state.items.findIndex(it => it._id === id || it.backendId === id || it.productId === id || it.id === id);
       if (idx >= 0) {
         state.items[idx].quantity = quantity;
         state.subtotal = calcSubtotal(state.items);
         state.totalAmount = state.subtotal;
+        
+        // Save to localStorage for guest users
+        if (state.isGuest) {
+          saveGuestCart({ items: state.items, totalAmount: state.totalAmount });
+        }
+      }
+    },
+    removeLocalItem(state, action) {
+      const id = action.payload;
+      state.items = state.items.filter(it => !(it._id === id || it.backendId === id || it.productId === id || it.id === id));
+      state.subtotal = calcSubtotal(state.items);
+      state.totalAmount = state.subtotal;
+      
+      // Save to localStorage for guest users
+      if (state.isGuest) {
         saveGuestCart({ items: state.items, totalAmount: state.totalAmount });
       }
     },
-
-    removeLocalItem(state, action) {
-      const id = action.payload;
-      state.items = state.items.filter(
-        (it) => !(it._id === id || it.backendId === id || it.productId === id || it.id === id)
-      );
-      state.subtotal = calcSubtotal(state.items);
-      state.totalAmount = state.subtotal;
-      saveGuestCart({ items: state.items, totalAmount: state.totalAmount });
-    },
-
     setCartItems(state, action) {
-      const items = normalizeAndEnsureUniqueKeys(action.payload || []);
+      const items = normalizeAndEnsureUniqueKeys(action.payload || [], false);
       state.items = items;
       state.subtotal = calcSubtotal(items);
       state.totalAmount = state.subtotal;
     },
+    forceRefresh(state) {
+      // This action triggers a cart refresh from server
+      state.loading = true;
+      state.error = null;
+      console.log('🔄 Force refreshing cart due to sync issues...');
+    },
   },
   extraReducers: (b) => {
-    const pending = (s) => {
-      s.loading = true;
-      s.error = null;
-    };
-    const rejected = (s, { payload }) => {
-      s.loading = false;
-      s.error = payload;
-      toast.error(String(payload));
-    };
+    const pending = s => { s.loading = true; s.error = null; };
+    const rejected = (s, { payload }) => { s.loading = false; s.error = payload; toast.error(String(payload)); };
     const fulfilled = (s, { payload }) => {
       s.loading = false;
       const rawItems = (payload && payload.items) ? payload.items : [];
-      const items = normalizeAndEnsureUniqueKeys(rawItems);
-
+      
+      console.log('🛒 Cart updated:', {
+        itemCount: rawItems.length,
+        isGuest: !!payload?.isGuest,
+        isBackendCart: !payload?.isGuest
+      });
+      
+      const items = normalizeAndEnsureUniqueKeys(rawItems, !payload?.isGuest);
+      
       s.items = items;
       s.subtotal = calcSubtotal(items);
-      s.totalAmount = payload && payload.totalAmount ? payload.totalAmount : s.subtotal;
-      s.isGuest = !!(payload && payload.isGuest);
+      s.totalAmount = payload?.totalAmount ?? s.subtotal;
+      s.isGuest = !!payload?.isGuest;
     };
 
     b.addCase(fetchCart.pending, pending).addCase(fetchCart.fulfilled, fulfilled).addCase(fetchCart.rejected, rejected);
@@ -287,5 +322,5 @@ const slice = createSlice({
   },
 });
 
-export const { clearCartState, updateLocalItem, removeLocalItem, setCartItems } = slice.actions;
+export const { clearCartState, updateLocalItem, removeLocalItem, setCartItems, forceRefresh } = slice.actions;
 export default slice.reducer;

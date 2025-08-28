@@ -112,24 +112,38 @@ const placeOrder = asyncHandler(async (req, res) => {
 const stripeWebhook = asyncHandler(async (req, res) => {
   const sig = req.headers["stripe-signature"];
   let event;
+  
+  console.log('📨 Webhook received, signature present:', !!sig);
+  
   try {
     // IMPORTANT: req.body is the raw Buffer (see server.js route order below)
     event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+    console.log('✅ Webhook signature verified, event type:', event.type);
   } catch (err) {
-    console.error("Webhook signature verification failed:", err.message);
+    console.error("❌ Webhook signature verification failed:", err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
   if (event.type === "payment_intent.succeeded") {
     const pi = event.data.object;
     const { orderId, userId } = pi.metadata || {};
+    
+    console.log('💳 Payment succeeded:', {
+      paymentIntentId: pi.id,
+      orderId,
+      userId,
+      amount: pi.amount,
+      status: pi.status
+    });
 
     // Update the exact order
     const order = await Order.findOne({ _id: orderId, user: userId });
     if (!order) {
-      console.error("Order not found for metadata:", pi.metadata);
+      console.error("❌ Order not found for metadata:", pi.metadata);
       return res.json({ received: true }); // ack anyway to avoid retries
     }
+    
+    console.log('📄 Order found, updating payment status...');
 
     // Update order with payment details
     order.isPaid = true;
@@ -152,6 +166,13 @@ const stripeWebhook = asyncHandler(async (req, res) => {
     }
     
     await order.save();
+    
+    console.log('✅ Order updated successfully:', {
+      orderId: order._id,
+      isPaid: order.isPaid,
+      status: order.status,
+      paidAt: order.paidAt
+    });
 
     // Clear user cart after successful payment
     await Cart.findOneAndDelete({ user: order.user });
@@ -304,6 +325,13 @@ module.exports = {
   // Fallback confirmation when webhooks are not available in dev
   confirmPayment: asyncHandler(async (req, res) => {
     const { paymentIntentId, orderId } = req.body || {};
+    
+    console.log('🔄 Fallback payment confirmation requested:', {
+      paymentIntentId,
+      orderId,
+      userId: req.user._id
+    });
+    
     if (!paymentIntentId || !orderId) {
       res.status(400);
       throw new Error("paymentIntentId and orderId are required");
@@ -311,27 +339,39 @@ module.exports = {
 
     // Retrieve PI from Stripe to verify status server-side
     const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+    console.log('💳 Payment Intent retrieved:', {
+      id: pi.id,
+      status: pi.status,
+      amount: pi.amount
+    });
+    
     if (!pi || pi.status !== "succeeded") {
+      console.log('❌ Payment not successful, status:', pi?.status);
       res.status(400);
       throw new Error("Payment not successful");
     }
 
     const metaOrderId = pi.metadata?.orderId;
     if (metaOrderId && metaOrderId !== String(orderId)) {
+      console.log('❌ Payment metadata mismatch:', { metaOrderId, orderId });
       res.status(400);
       throw new Error("Payment metadata does not match order");
     }
 
     const order = await Order.findOne({ _id: orderId, user: req.user._id });
     if (!order) {
+      console.log('❌ Order not found:', { orderId, userId: req.user._id });
       res.status(404);
       throw new Error("Order not found");
     }
 
     // If already processed via webhook, just return
     if (order.isPaid) {
+      console.log('✅ Order already paid, skipping update');
       return res.json({ message: "Already confirmed", order });
     }
+    
+    console.log('🔄 Updating order payment status...');
 
     order.isPaid = true;
     order.paidAt = new Date();
@@ -353,6 +393,12 @@ module.exports = {
     }
 
     await order.save();
+    
+    console.log('✅ Payment confirmed via fallback:', {
+      orderId: order._id,
+      isPaid: order.isPaid,
+      status: order.status
+    });
 
     // Clear user cart
     await Cart.findOneAndDelete({ user: order.user });
@@ -373,6 +419,36 @@ module.exports = {
 
     res.json({ message: "Payment confirmed", order });
   }),
+  
+  // Debug endpoint to check order status
+  debugOrder: asyncHandler(async (req, res) => {
+    const { orderId } = req.params;
+    const order = await Order.findOne({ _id: orderId, user: req.user._id });
+    
+    if (!order) {
+      res.status(404);
+      throw new Error("Order not found");
+    }
+    
+    console.log('🔍 Debug order status:', {
+      orderId: order._id,
+      isPaid: order.isPaid,
+      status: order.status,
+      paidAt: order.paidAt,
+      paymentResult: order.paymentResult
+    });
+    
+    res.json({
+      orderId: order._id,
+      isPaid: order.isPaid,
+      status: order.status,
+      paidAt: order.paidAt,
+      paymentResult: order.paymentResult,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt
+    });
+  }),
+  
   getOrders,
   getUserOrders,
   updateOrderStatus,

@@ -28,13 +28,17 @@ const convertCartImageUrls = (req, cart) => {
   const baseUrl = `${req.protocol}://${req.get('host')}`;
   return {
     ...cart.toObject(),
-    items: cart.items.map(item => ({
-      ...item,
-      product: item.product ? {
-        ...item.product.toObject(),
-        images: convertImageUrls(req, item.product.images)
-      } : item.product
-    }))
+    items: cart.items.map(item => {
+      const itemObj = item.toObject();
+      return {
+        ...itemObj,
+        _id: item._id,           // Ensure cart item subdocument ID is preserved
+        product: item.product ? {
+          ...item.product.toObject(),
+          images: convertImageUrls(req, item.product.images)
+        } : item.product
+      };
+    })
   };
 };
 

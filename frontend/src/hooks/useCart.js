@@ -8,10 +8,13 @@ import {
   updateLocalItem,
   removeLocalItem,
   setCartItems,
+  clearCart,
 } from "../features/cart/cartSlice.js";
+import { toast } from "react-toastify";
+import hotToast from "react-hot-toast";
 
 /**
- * useCart - uses the cart slice and ensures API calls use the cart-item subdocument id when available.
+ * useCart - handles both guest cart (localStorage) and backend cart.
  */
 export default function useCart() {
   const dispatch = useDispatch();
@@ -21,73 +24,182 @@ export default function useCart() {
     try {
       await dispatch(fetchCart()).unwrap();
     } catch (err) {
-      // fetchCart handles toasts
+      console.error("Failed to refresh cart", err);
     }
   }, [dispatch]);
 
   const add = useCallback(async ({ productId, quantity = 1, price = 0, product = null } = {}) => {
+    console.log('🛒 useCart.add called:', { productId, quantity, price, isGuest: cart.isGuest });
+    
     try {
       await dispatch(addItem({ productId, quantity, price, product })).unwrap();
+      console.log('✅ Item added successfully, refreshing cart...');
       await dispatch(fetchCart()).unwrap();
+      console.log('✅ Cart refreshed after adding item');
     } catch (err) {
-      // handled in thunk
+      console.error('❌ Failed to add item', err);
+      throw err;
     }
   }, [dispatch]);
 
   const update = useCallback(async (uiId, quantity) => {
-    // optimistic UI
-    dispatch(updateLocalItem({ id: uiId, quantity }));
+    if (quantity <= 0) {
+      console.error("Quantity must be positive");
+      return;
+    }
+
+    console.log('🔄 useCart.update called:', { uiId, quantity, isGuest: cart.isGuest });
 
     const item = (cart.items || []).find(
-      (it) => it._id === uiId || it.backendId === uiId || it.productId === uiId || it.id === uiId
+      (it) => it._id === uiId || it.backendId === uiId || it.productId === uiId
     );
+    
+    if (!item) {
+      console.error("❌ Item not found for update:", uiId);
+      console.log('Available items:', cart.items.map(it => ({ _id: it._id, backendId: it.backendId, productId: it.productId })));
+      // Try refreshing cart to get latest state
+      await dispatch(fetchCart()).unwrap();
+      return;
+    }
 
-    // prefer the cart subdocument id (backendId/_id). fallback to product id only if necessary.
-    const apiId = item?.backendId ?? item?._id ?? item?.product?._id ?? item?.productId ?? uiId;
+    console.log('✅ Found item to update:', {
+      _id: item._id,
+      backendId: item.backendId,
+      productId: item.productId,
+      productName: item.product?.name,
+      isGuest: cart.isGuest
+    });
 
-    // debug info (remove in production)
-    // eslint-disable-next-line no-console
-    console.debug("Cart update - uiId:", uiId, "apiId:", apiId, "item:", item);
+    // For guest users, handle locally
+    if (cart.isGuest) {
+      console.log('👤 Guest user - updating locally');
+      dispatch(updateLocalItem({ id: uiId, quantity }));
+      return;
+    }
+
+    // For authenticated users, we need the cart item ID (MongoDB subdocument _id)
+    const cartItemId = item.backendId || item._id;
+    
+    if (!cartItemId) {
+      console.error("❌ No cart item ID found for authenticated user. Item:", item);
+      await dispatch(fetchCart()).unwrap();
+      return;
+    }
+
+    // For generated backend IDs (when MongoDB _id is missing), use productId for API calls
+    const apiId = cartItemId.startsWith('backend-') ? item.productId : cartItemId;
+    
+    console.log('🔐 Authenticated user - updating cart item:', {
+      uiId,
+      cartItemId,
+      apiId,
+      productId: item.productId
+    });
 
     try {
-      const res = await dispatch(updateItemQty({ id: apiId, quantity })).unwrap();
-      // if server returned authoritative items, apply them; otherwise refetch
-      const serverItems = res?.items ?? res?.cartItems ?? res ?? null;
-      if (Array.isArray(serverItems) && serverItems.length) {
-        dispatch(setCartItems(serverItems));
-      } else {
-        await dispatch(fetchCart()).unwrap();
-      }
+      // Update on server using the appropriate ID
+      await dispatch(updateItemQty({ id: apiId, quantity })).unwrap();
+      
+      console.log('✅ Successfully updated on server');
     } catch (err) {
-      // rollback to authoritative state
-      await dispatch(fetchCart());
+      console.error("❌ Failed to update item on server", err);
+      
+      // If it's a 404 error (item not found), the cart is out of sync
+      if (err.message?.includes('not found') || err.response?.status === 404) {
+        console.warn('⚠️ Cart appears to be out of sync with server. Refreshing...');
+        hotToast.error('Cart was updated elsewhere. Refreshing cart...');
+      }
+      
+      // Always refresh from server to get the correct state
+      await dispatch(fetchCart()).unwrap();
+      throw err;
     }
-  }, [dispatch, cart.items]);
+  }, [dispatch, cart.items, cart.isGuest]);
 
   const remove = useCallback(async (uiId) => {
-    // optimistic UI remove
-    dispatch(removeLocalItem(uiId));
-
+    console.log('🗑️ useCart.remove called with uiId:', uiId);
+    
     const item = (cart.items || []).find(
       (it) => it._id === uiId || it.backendId === uiId || it.productId === uiId || it.id === uiId
     );
-    const apiId = item?.backendId ?? item?._id ?? item?.product?._id ?? item?.productId ?? uiId;
+    if (!item) {
+      console.error("❌ Item not found for removal:", uiId);
+      console.log('Available items:', cart.items.map(it => ({
+        _id: it._id,
+        backendId: it.backendId,
+        productId: it.productId,
+        id: it.id
+      })));
+      return;
+    }
 
-    // eslint-disable-next-line no-console
-    console.debug("Cart remove - uiId:", uiId, "apiId:", apiId, "item:", item);
+    console.log('✅ Found item to remove:', {
+      item: {
+        _id: item._id,
+        backendId: item.backendId,
+        productId: item.productId,
+        id: item.id,
+        productName: item.product?.name
+      },
+      isGuest: cart.isGuest
+    });
+
+    // For guest users, handle locally
+    if (cart.isGuest) {
+      console.log('👤 Guest user - removing locally');
+      dispatch(removeLocalItem(uiId));
+      return;
+    }
+
+    // For authenticated users, we need the cart item ID (not product ID)
+    const cartItemId = item.backendId || item._id;
+    if (!cartItemId) {
+      console.error("❌ No cart item ID found for authenticated user. Item:", item);
+      await dispatch(fetchCart()).unwrap();
+      return;
+    }
+
+    // For generated backend IDs (when MongoDB _id is missing), use productId for API calls
+    const apiId = cartItemId.startsWith('backend-') ? item.productId : cartItemId;
+    
+    console.log('🔐 Authenticated user - removing from server:', {
+      uiId,
+      cartItemId,
+      apiId,
+      productId: item.productId
+    });
 
     try {
-      const res = await dispatch(removeItem(apiId)).unwrap();
-      const serverItems = res?.items ?? res?.cartItems ?? res ?? null;
-      if (Array.isArray(serverItems) && serverItems.length) {
-        dispatch(setCartItems(serverItems));
-      } else {
-        await dispatch(fetchCart()).unwrap();
-      }
+      console.log('📤 Making API call to remove cart item...');
+      // Remove from server using the appropriate ID
+      await dispatch(removeItem(apiId)).unwrap();
+      
+      console.log('✅ Successfully removed from server');
     } catch (err) {
-      await dispatch(fetchCart());
+      console.error("❌ Failed to remove item from server", err);
+      
+      // If it's a 404 error (item not found), the cart is out of sync
+      if (err.message?.includes('not found') || err.response?.status === 404) {
+        console.warn('⚠️ Cart appears to be out of sync with server. Refreshing...');
+        hotToast.error('Cart was updated elsewhere. Refreshing cart...');
+      }
+      
+      // Refresh from server to restore correct state
+      await dispatch(fetchCart()).unwrap();
+      throw err;
     }
-  }, [dispatch, cart.items]);
+  }, [dispatch, cart.items, cart.isGuest]);
+
+  const clear = useCallback(async () => {
+    console.log('🗑️ useCart.clear called');
+    try {
+      await dispatch(clearCart()).unwrap();
+      console.log('✅ Cart cleared successfully');
+    } catch (err) {
+      console.error('❌ Failed to clear cart', err);
+      throw err;
+    }
+  }, [dispatch]);
 
   return {
     items: cart.items,
@@ -100,5 +212,6 @@ export default function useCart() {
     add,
     update,
     remove,
+    clear,
   };
 }

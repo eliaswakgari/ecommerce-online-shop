@@ -166,8 +166,8 @@ const forgotPassword = asyncHandler(async (req, res) => {
   const resetToken = user.getResetPasswordToken();
   await user.save({ validateBeforeSave: false });
 
-  // Create reset url
-  const resetUrl = `${req.protocol}://${req.get('host')}/reset-password/${resetToken}`;
+  // Create reset url - point to frontend reset page
+  const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
 
   const message = `
     You are receiving this email because you (or someone else) has requested the reset of a password.
@@ -180,10 +180,12 @@ const forgotPassword = asyncHandler(async (req, res) => {
       email: user.email,
       subject: 'Password reset token',
       message,
+      resetUrl, // Pass resetUrl for HTML template
     });
 
     res.json({ message: 'Email sent' });
   } catch (error) {
+    console.error('Email sending error:', error);
     user.resetPasswordToken = undefined;
     user.resetPasswordExpire = undefined;
     await user.save({ validateBeforeSave: false });
@@ -222,6 +224,62 @@ const resetPassword = asyncHandler(async (req, res) => {
   res.json({ message: 'Password reset successful' });
 });
 
+// @desc    Google OAuth success callback
+// @route   GET /api/auth/google/success
+// @access  Public
+const googleAuthSuccess = asyncHandler(async (req, res) => {
+  if (req.user) {
+    console.log('🔐 Google OAuth Success - User:', {
+      id: req.user._id,
+      email: req.user.email,
+      role: req.user.role,
+      googleId: req.user.googleId
+    });
+
+    // Generate token & set HttpOnly cookie
+    const token = generateToken(req.user);
+    res.cookie("token", token, { 
+      httpOnly: true, 
+      secure: process.env.NODE_ENV === "production", 
+      maxAge: 7 * 24 * 3600 * 1000,
+      sameSite: 'lax'
+    });
+
+    // Redirect based on user role to appropriate dashboard
+    if (req.user.role === 'admin') {
+      console.log('🚀 Redirecting admin to admin dashboard');
+      res.redirect(`${process.env.FRONTEND_URL}/admin?auth=success`);
+    } else {
+      console.log('🚀 Redirecting customer to home page');
+      res.redirect(`${process.env.FRONTEND_URL}/?auth=success`);
+    }
+  } else {
+    console.log('❌ Google OAuth failed - no user found');
+    res.redirect(`${process.env.FRONTEND_URL}/login?error=auth_failed`);
+  }
+});
+
+// @desc    Google OAuth failure callback
+// @route   GET /api/auth/google/failure
+// @access  Public
+const googleAuthFailure = asyncHandler(async (req, res) => {
+  res.redirect(`${process.env.FRONTEND_URL}/login?error=auth_failed`);
+});
+
+// @desc    Debug Google OAuth configuration
+// @route   GET /api/auth/google/debug
+// @access  Public
+const googleAuthDebug = asyncHandler(async (req, res) => {
+  res.json({
+    message: 'Google OAuth Debug Info',
+    callbackURL: `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/auth/google/callback`,
+    clientID: process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Not Set',
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET ? 'Set' : 'Not Set',
+    frontendURL: process.env.FRONTEND_URL,
+    backendURL: process.env.BACKEND_URL,
+  });
+});
+
 module.exports = {
   registerUser,
   loginUser,
@@ -231,4 +289,7 @@ module.exports = {
   changePassword,
   forgotPassword,
   resetPassword,
+  googleAuthSuccess,
+  googleAuthFailure,
+  googleAuthDebug,
 };
