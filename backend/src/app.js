@@ -49,10 +49,21 @@ app.use(passport.session());
 
 // CORS configuration (supports local + production frontends)
 const defaultFrontend = "http://localhost:5173";
-const corsOrigins = (process.env.FRONTEND_URL || defaultFrontend)
+const rawOrigins = (process.env.FRONTEND_URL || defaultFrontend)
   .split(',')
   .map(o => o.trim())
   .filter(Boolean);
+
+// Normalize origins: ensure they include protocol so they match browser Origin
+const corsOrigins = rawOrigins.map((origin) => {
+  if (origin.startsWith("http://") || origin.startsWith("https://")) {
+    return origin;
+  }
+  if (origin.includes("localhost")) {
+    return `http://${origin}`;
+  }
+  return `https://${origin}`;
+});
 
 app.use(cors({
   origin: corsOrigins,
