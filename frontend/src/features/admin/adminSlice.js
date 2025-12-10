@@ -6,8 +6,11 @@ import {
 } from "../../api/analyticsApi.js";
 
 // ----------------- API Endpoints -----------------
-const ANALYTICS_BASE = "/api/analytics";
-const COUPONS_URL = "/api/coupons";
+// Use the same backend base URL as axiosInstance (VITE_API_BASE_URL) so that
+// admin analytics & coupons work both on localhost and on Vercel/Render.
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+const ANALYTICS_BASE = `${API_BASE}/api/analytics`;
+const COUPONS_URL = `${API_BASE}/api/coupons`;
 
 // ----------------- Helper: fetchJson -----------------
 async function fetchJson(url, options = {}) {
