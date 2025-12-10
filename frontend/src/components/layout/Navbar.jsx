@@ -121,19 +121,19 @@ export default function Navbar() {
           )}
 
           {/* Cart */}
-{!isAdmin && (
-  <button
-    onClick={() => navigate("/cart")}
-    className="relative p-2 rounded-full hover:bg-gray-100 transition-colors"
-  >
-    <FaShoppingCart className="h-5 w-5 text-gray-700" />
-    {cartCount > 0 && (
-      <span className="absolute -top-1 -right-1 min-w-[1.25rem] h-5 flex items-center justify-center text-white bg-blue-600 px-1.5 rounded-full text-xs font-medium leading-none">
-        {cartCount > 99 ? '99+' : cartCount}
-      </span>
-    )}
-  </button>
-)}
+          {!isAdmin && (
+            <button
+              onClick={() => navigate("/cart")}
+              className="relative p-2 rounded-full hover:bg-gray-100 transition-colors"
+            >
+              <FaShoppingCart className="h-5 w-5 text-gray-700" />
+              {cartCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[1.25rem] h-5 flex items-center justify-center text-white bg-blue-600 px-1.5 rounded-full text-xs font-medium leading-none">
+                  {cartCount > 99 ? '99+' : cartCount}
+                </span>
+              )}
+            </button>
+          )}
 
 
           {/* Auth */}
@@ -146,9 +146,9 @@ export default function Navbar() {
             </button>
           ) : (
             <div className="flex items-center gap-3">
-              <UserAvatar 
-                user={user} 
-                size="sm" 
+              <UserAvatar
+                user={user}
+                size="sm"
                 onClick={() => navigate("/profile")}
               />
               <button
@@ -177,7 +177,7 @@ export default function Navbar() {
               )}
             </button>
           )}
-          
+
           {/* Hamburger Menu */}
           <button
             className="p-2 rounded hover:bg-gray-100 transition-colors touch-target"
@@ -235,7 +235,7 @@ export default function Navbar() {
                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Categories</h3>
                     <button
                       className="block w-full text-left px-3 py-3 rounded-lg hover:bg-gray-100 transition-colors"
-                      onClick={() => handleSelectCategory("")} 
+                      onClick={() => handleSelectCategory("")}
                     >
                       All Products
                     </button>
@@ -254,15 +254,14 @@ export default function Navbar() {
                 {/* Navigation Links */}
                 <div className="space-y-3">
                   <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Navigation</h3>
-                  
+
                   {!isAdmin && (
                     <>
                       <NavLink
                         to="/products"
                         onClick={() => setSidebarOpen(false)}
                         className={({ isActive }) =>
-                          `block px-3 py-3 rounded-lg transition-colors ${
-                            isActive ? "bg-blue-50 text-blue-600 font-medium" : "hover:bg-gray-100"
+                          `block px-3 py-3 rounded-lg transition-colors ${isActive ? "bg-blue-50 text-blue-600 font-medium" : "hover:bg-gray-100"
                           }`
                         }
                       >
@@ -273,8 +272,7 @@ export default function Navbar() {
                           to="/orders"
                           onClick={() => setSidebarOpen(false)}
                           className={({ isActive }) =>
-                            `block px-3 py-3 rounded-lg transition-colors ${
-                              isActive ? "bg-blue-50 text-blue-600 font-medium" : "hover:bg-gray-100"
+                            `block px-3 py-3 rounded-lg transition-colors ${isActive ? "bg-blue-50 text-blue-600 font-medium" : "hover:bg-gray-100"
                             }`
                           }
                         >
@@ -283,14 +281,13 @@ export default function Navbar() {
                       )}
                     </>
                   )}
-                  
+
                   {isAdmin && (
                     <NavLink
                       to="/admin"
                       onClick={() => setSidebarOpen(false)}
                       className={({ isActive }) =>
-                        `block px-3 py-3 rounded-lg transition-colors ${
-                          isActive ? "bg-blue-50 text-blue-600 font-medium" : "hover:bg-gray-100"
+                        `block px-3 py-3 rounded-lg transition-colors ${isActive ? "bg-blue-50 text-blue-600 font-medium" : "hover:bg-gray-100"
                         }`
                       }
                     >

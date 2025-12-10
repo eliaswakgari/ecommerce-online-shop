@@ -22,6 +22,8 @@ const reviewRoutes = require("./routes/reviewRoutes");
 
 const app = express();
 
+const isProd = process.env.NODE_ENV === 'production';
+
 // Increase body size limits to support base64 image payloads
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
@@ -35,7 +37,8 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
   }
 }));
@@ -44,9 +47,15 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-// CORS configuration (adjust origins as needed)
+// CORS configuration (supports local + production frontends)
+const defaultFrontend = "http://localhost:5173";
+const corsOrigins = (process.env.FRONTEND_URL || defaultFrontend)
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "http://localhost:5173",
+  origin: corsOrigins,
   credentials: true,
 }));
 

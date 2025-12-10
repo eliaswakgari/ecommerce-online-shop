@@ -1,7 +1,7 @@
 import React from "react";
 import ProductCard from "./ProductCard.jsx";
 
-export default function ProductList({ products=[] }) {
+export default function ProductList({ products = [] }) {
   if (!products.length) {
     return (
       <div className="text-center py-8 sm:py-12 lg:py-16">
@@ -15,10 +15,18 @@ export default function ProductList({ products=[] }) {
       </div>
     );
   }
-  
+
   return (
     <div className="grid-responsive">
-      {products.map((p) => <ProductCard key={p._id} product={p} />)}
+      {products.map((p, index) => (
+        <div
+          key={p._id}
+          className="fade-in-up"
+          style={{ animationDelay: `${index * 80}ms` }}
+        >
+          <ProductCard product={p} />
+        </div>
+      ))}
     </div>
   );
 }

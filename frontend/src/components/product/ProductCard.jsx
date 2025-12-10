@@ -5,13 +5,16 @@ import formatCurrency from "../../utils/formatCurrency.js";
 
 export default function ProductCard({ product }) {
   return (
-    <div className="card-responsive hover-lift group overflow-hidden">
+    <Link
+      to={`/products/${product._id}`}
+      className="relative block card-responsive group overflow-hidden rounded-2xl bg-gradient-to-br from-pink-50 via-rose-50 to-indigo-50 shadow-elegant hover:shadow-elegant-lg transition-all duration-300 hover:-translate-y-1 min-w-[230px]"
+    >
       {/* Product Image */}
-      <Link to={`/products/${product._id}`} className="block relative overflow-hidden rounded-t-lg sm:rounded-t-xl lg:rounded-t-2xl">
+      <div className="relative z-10 overflow-hidden rounded-t-xl lg:rounded-t-2xl">
         <img
           src={product.images?.[0]?.url || "https://via.placeholder.com/600x400?text=No+Image"}
           alt={product.name}
-          className="w-full h-40 sm:h-48 lg:h-52 object-cover transition-transform duration-300 group-hover:scale-105"
+          className="w-full h-48 sm:h-56 lg:h-64 object-cover transition-transform duration-500 group-hover:scale-[1.03] group-hover:brightness-110"
           loading="lazy"
         />
         {/* Product Badge */}
@@ -25,24 +28,17 @@ export default function ProductCard({ product }) {
             Low Stock
           </div>
         )}
-      </Link>
-      
+      </div>
+
+      {/* Full-card brand overlay on hover */}
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-pink-500/0 via-rose-400/10 to-rose-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+
       {/* Product Info */}
-      <div className="p-3 sm:p-4 lg:p-5 space-y-2 sm:space-y-3">
+      <div className="relative z-10 p-3 sm:p-4 lg:p-5 space-y-2 sm:space-y-3 min-h-[150px] flex flex-col justify-between">
         {/* Product Name */}
-        <Link 
-          to={`/products/${product._id}`} 
-          className="block font-semibold text-gray-900 hover:text-blue-600 transition-colors"
-        >
-          <h3 className="text-sm sm:text-base lg:text-lg line-clamp-2 leading-tight">
-            {product.name}
-          </h3>
-        </Link>
-        
-        {/* Product Description */}
-        <p className="text-xs sm:text-sm text-gray-500 line-clamp-2 leading-relaxed">
-          {product.description}
-        </p>
+        <h3 className="text-sm sm:text-base lg:text-lg font-semibold text-gray-900 leading-tight line-clamp-2 group-hover:text-blue-600 transition-colors">
+          {product.name}
+        </h3>
 
         {/* Rating */}
         <div className="flex items-center gap-1">
@@ -50,11 +46,10 @@ export default function ProductCard({ product }) {
             {[1, 2, 3, 4, 5].map((star) => (
               <StarIcon
                 key={star}
-                className={`w-3 h-3 sm:w-4 sm:h-4 ${
-                  star <= (product.rating || 0) 
-                    ? "text-yellow-400 fill-current" 
-                    : "text-gray-300"
-                }`}
+                className={`w-3 h-3 sm:w-4 sm:h-4 ${star <= (product.rating || 0)
+                  ? "text-yellow-400 fill-current"
+                  : "text-gray-300"
+                  }`}
               />
             ))}
           </div>
@@ -63,7 +58,7 @@ export default function ProductCard({ product }) {
           </span>
         </div>
 
-        {/* Price and Action */}
+        {/* Price */}
         <div className="flex items-center justify-between pt-1">
           <div className="flex flex-col">
             <span className="font-bold text-gray-900 text-sm sm:text-base lg:text-lg">
@@ -75,16 +70,8 @@ export default function ProductCard({ product }) {
               </span>
             )}
           </div>
-          
-          <Link 
-            to={`/products/${product._id}`} 
-            className="px-3 py-2 bg-blue-600 text-white text-xs sm:text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors touch-target group"
-          >
-            <span className="block sm:hidden">View</span>
-            <span className="hidden sm:block">View Details</span>
-          </Link>
         </div>
-        
+
         {/* Stock Status */}
         <div className="pt-1">
           {product.countInStock === 0 ? (
@@ -98,6 +85,6 @@ export default function ProductCard({ product }) {
           )}
         </div>
       </div>
-    </div>
+    </Link>
   );
 }

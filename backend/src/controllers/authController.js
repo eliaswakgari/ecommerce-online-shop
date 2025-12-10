@@ -4,6 +4,14 @@ const generateToken = require("../utils/generateToken");
 const sendEmail = require("../utils/sendEmail");
 const crypto = require("crypto");
 
+const isProd = process.env.NODE_ENV === "production";
+const authCookieOptions = {
+  httpOnly: true,
+  secure: isProd,
+  sameSite: isProd ? "none" : "lax",
+  maxAge: 7 * 24 * 3600 * 1000,
+};
+
 // @desc    Register new user
 // @route   POST /api/auth/register
 // @access  Public
@@ -20,7 +28,7 @@ const registerUser = asyncHandler(async (req, res) => {
   if (user) {
     // Generate token & set HttpOnly cookie
     const token = generateToken(user);
-    res.cookie("token", token, { httpOnly: true, secure: process.env.NODE_ENV === "production", maxAge: 7 * 24 * 3600 * 1000 });
+    res.cookie("token", token, authCookieOptions);
 
     res.status(201).json({
       _id: user._id,
@@ -45,7 +53,7 @@ const loginUser = asyncHandler(async (req, res) => {
   const user = await User.findOne({ email });
   if (user && (await user.matchPassword(password))) {
     const token = generateToken(user);
-    res.cookie("token", token, { httpOnly: true, secure: process.env.NODE_ENV === "production", maxAge: 7 * 24 * 3600 * 1000 });
+    res.cookie("token", token, authCookieOptions);
 
     res.json({
       _id: user._id,
@@ -65,7 +73,7 @@ const loginUser = asyncHandler(async (req, res) => {
 // @route   POST /api/auth/logout
 // @access  Private
 const logoutUser = asyncHandler(async (req, res) => {
-  res.cookie("token", "", { httpOnly: true, expires: new Date(0) });
+  res.cookie("token", "", { ...authCookieOptions, expires: new Date(0) });
   res.json({ message: "Logged out successfully" });
 });
 
@@ -238,12 +246,7 @@ const googleAuthSuccess = asyncHandler(async (req, res) => {
 
     // Generate token & set HttpOnly cookie
     const token = generateToken(req.user);
-    res.cookie("token", token, { 
-      httpOnly: true, 
-      secure: process.env.NODE_ENV === "production", 
-      maxAge: 7 * 24 * 3600 * 1000,
-      sameSite: 'lax'
-    });
+    res.cookie("token", token, authCookieOptions);
 
     // Redirect based on user role to appropriate dashboard
     if (req.user.role === 'admin') {
