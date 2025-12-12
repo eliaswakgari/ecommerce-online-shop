@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import ProductList from "../components/product/ProductList.jsx";
@@ -11,8 +11,10 @@ import heroBanner4 from "../assets/images/hero-banner-4.jpg";
 export default function HomePage() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { items } = useSelector(s => s.product);
+  const { items, categories } = useSelector(s => s.product);
   const [activeSlide, setActiveSlide] = useState(0);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const categoryScrollRef = useRef(null);
 
   const heroSlides = [
     {
@@ -61,6 +63,33 @@ export default function HomePage() {
     }, 5000);
     return () => clearInterval(interval);
   }, [heroSlides.length]);
+
+  // Build dynamic category cards from backend categories and products
+  const categoryCards = (categories || []).map((cat) => {
+    const sampleProduct = items.find((p) => p.category === cat);
+    let imageUrl = null;
+    if (sampleProduct?.images?.length) {
+      const img = sampleProduct.images[0];
+      imageUrl = img?.url || img;
+    }
+    return {
+      key: cat,
+      label: cat,
+      image: imageUrl,
+    };
+  });
+
+  // Featured products filtered by selected category (if any)
+  const featuredProducts = (selectedCategory
+    ? items.filter((p) => p.category === selectedCategory)
+    : items
+  ).slice(0, 8);
+
+  const handleCategoryScrollRight = () => {
+    if (categoryScrollRef.current) {
+      categoryScrollRef.current.scrollBy({ left: 320, behavior: "smooth" });
+    }
+  };
 
   return (
     <div className="space-mobile-y">
@@ -122,25 +151,40 @@ export default function HomePage() {
           <h2 className="text-responsive-2xl font-bold text-gray-900">
             Shop by Category
           </h2>
+          {categoryCards.length > 0 && (
+            <button
+              onClick={handleCategoryScrollRight}
+              className="text-sm sm:text-base text-blue-600 hover:text-blue-800 font-medium hover:underline transition-colors self-start sm:self-auto"
+            >
+              View All 
+            </button>
+          )}
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
-          {[
-            { key: "men", label: "Men" },
-            { key: "women", label: "Women" },
-            { key: "boys", label: "Boys" },
-            { key: "girls", label: "Girls" },
-            { key: "kids", label: "Children" },
-            { key: "accessories", label: "Accessories" }
-          ].map((cat) => (
+
+        <div
+          ref={categoryScrollRef}
+          className="flex gap-3 sm:gap-4 overflow-x-auto pb-2"
+        >
+          {categoryCards.map((cat) => (
             <button
               key={cat.key}
-              onClick={() => navigate(`/products?category=${cat.key}`)}
-              className="group relative flex flex-col items-center justify-between rounded-xl border bg-white p-3 sm:p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
+              onClick={() => setSelectedCategory(cat.key === selectedCategory ? null : cat.key)}
+              className={`group relative flex flex-col items-center justify-between rounded-xl border bg-white p-3 sm:p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 min-w-[120px] sm:min-w-[150px] ${selectedCategory === cat.key ? "border-pink-500 ring-2 ring-pink-200" : ""
+                }`}
             >
-              <div className="w-full h-16 sm:h-20 rounded-lg bg-gradient-to-br from-pink-100 via-purple-100 to-blue-100 mb-2 overflow-hidden">
-                <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
-                  {cat.label}
-                </div>
+              <div className="w-full h-16 sm:h-20 rounded-lg mb-2 overflow-hidden bg-gradient-to-br from-pink-100 via-purple-100 to-blue-100">
+                {cat.image ? (
+                  <img
+                    src={cat.image}
+                    alt={cat.label}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
+                    {cat.label}
+                  </div>
+                )}
               </div>
               <span className="text-xs sm:text-sm font-medium text-gray-800 group-hover:text-pink-600">
                 {cat.label}
@@ -166,7 +210,7 @@ export default function HomePage() {
 
         {/* Products Grid */}
         <div className="w-full">
-          <ProductList products={items.slice(0, 8)} />
+          <ProductList products={featuredProducts} />
         </div>
       </section>
     </div>

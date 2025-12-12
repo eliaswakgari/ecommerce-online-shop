@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { useParams } from "react-router-dom";
-import { fetchProductById } from "./productSlice.js";
+import { useParams, useNavigate } from "react-router-dom";
+import { fetchProductById, fetchProducts } from "./productSlice.js";
 import Button from "../../components/ui/Button.jsx";
 import useCart from "../../hooks/useCart.js";
 import formatCurrency from "../../utils/formatCurrency.js";
@@ -9,16 +9,19 @@ import ReviewModal from "../../components/review/ReviewModal.jsx";
 import ReviewList from "../../components/review/ReviewList.jsx";
 import { StarIcon } from "@heroicons/react/20/solid";
 import toast from "react-hot-toast";
+import { createReviewApi } from "../../api/reviewApi.js";
 
 export default function ProductDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const dispatch = useDispatch();
   const [qty, setQty] = useState(1);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [mainImage, setMainImage] = useState(""); // track selected image
   const { add, refresh } = useCart();
 
-  const { current } = useSelector((s) => s.product);
+  const { current, filters } = useSelector((s) => s.product);
+  const { user } = useSelector((s) => s.auth);
 
   useEffect(() => {
     dispatch(fetchProductById(id));
@@ -32,31 +35,65 @@ export default function ProductDetailPage() {
 
   if (!current) return <div>Loading...</div>;
 
-  const handleAddToCart = async (reviewData = null) => {
+  // Add product to cart only (no review logic here)
+  const handleAddToCart = async () => {
+    if (!user) {
+      toast.error("Please log in to add items to your cart");
+      navigate("/login");
+      return;
+    }
     console.log('🛒 Add to Cart clicked:', {
       productId: current._id,
       productName: current.name,
       quantity: Number(qty) || 1,
       price: current.price,
-      hasReviewData: !!reviewData
     });
-    
+
     try {
       await add({
         productId: current._id,
         quantity: Number(qty) || 1,
         price: current.price,
         product: current,
-        reviewData: reviewData || undefined,
       });
 
       toast.success(`Added ${current.name} to cart`);
-      setShowReviewModal(false);
-      
+
       console.log('✅ Successfully added to cart');
     } catch (err) {
       console.error('❌ Add to cart failed:', err);
       toast.error("Failed to add to cart");
+    }
+  };
+
+  // Submit or update a review without modifying the cart
+  const handleSubmitReview = async (reviewData) => {
+    if (!user) {
+      toast.error("Please log in to submit a review");
+      navigate("/login");
+      return;
+    }
+
+    if (!current?._id) return;
+
+    try {
+      await createReviewApi({
+        productId: current._id,
+        rating: reviewData.rating,
+        title: reviewData.title,
+        comment: reviewData.comment,
+      });
+
+      toast.success("Review submitted successfully");
+      setShowReviewModal(false);
+
+      // Refresh product details to get updated average rating & count
+      dispatch(fetchProductById(current._id));
+      // Also refresh product list so cards reflect latest rating
+      dispatch(fetchProducts(filters));
+    } catch (err) {
+      console.error('❌ Review submission failed:', err);
+      toast.error("Failed to submit review");
     }
   };
 
@@ -65,9 +102,8 @@ export default function ProductDetailPage() {
       {[1, 2, 3, 4, 5].map((star) => (
         <StarIcon
           key={star}
-          className={`w-4 h-4 ${
-            star <= rating ? "text-yellow-400 fill-current" : "text-gray-300"
-          }`}
+          className={`w-4 h-4 ${star <= rating ? "text-yellow-400 fill-current" : "text-gray-300"
+            }`}
         />
       ))}
     </div>
@@ -137,7 +173,7 @@ export default function ProductDetailPage() {
 
             <Button
               disabled={current.stock <= 0}
-              onClick={() => handleAddToCart(null)}
+              onClick={handleAddToCart}
             >
               Add to Cart
             </Button>
@@ -162,7 +198,7 @@ export default function ProductDetailPage() {
       <ReviewModal
         isOpen={showReviewModal}
         onClose={() => setShowReviewModal(false)}
-        onSubmit={(reviewData) => handleAddToCart(reviewData)}
+        onSubmit={handleSubmitReview}
         product={current}
       />
     </div>

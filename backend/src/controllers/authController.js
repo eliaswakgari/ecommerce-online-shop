@@ -73,7 +73,24 @@ const loginUser = asyncHandler(async (req, res) => {
 // @route   POST /api/auth/logout
 // @access  Private
 const logoutUser = asyncHandler(async (req, res) => {
+  // Clear JWT auth cookie
   res.cookie("token", "", { ...authCookieOptions, expires: new Date(0) });
+
+  // Log out from Passport (if session-based auth is active)
+  if (typeof req.logout === 'function') {
+    // Passport v0.6+ requires a callback
+    await new Promise((resolve) => {
+      req.logout(() => resolve());
+    });
+  }
+
+  // Destroy Express session
+  if (req.session) {
+    await new Promise((resolve) => {
+      req.session.destroy(() => resolve());
+    });
+  }
+
   res.json({ message: "Logged out successfully" });
 });
 
