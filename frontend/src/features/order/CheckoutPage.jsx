@@ -8,7 +8,6 @@ import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import useCart from "../../hooks/useCart.js";
 import formatCurrency from "../../utils/formatCurrency.js";
-import api from "../../api/axiosInstance.js";
 
 export default function CheckoutPage() {
   const dispatch = useDispatch();
@@ -73,21 +72,36 @@ export default function CheckoutPage() {
 
         toast.success("Payment successful! Confirming order...");
 
-        // Immediate fallback confirmation when webhooks are not available or delayed
+        // Immediate fallback confirmation (also used in production) to
+        // update the order status on the backend using the same base URL
+        // as axiosInstance (VITE_API_BASE_URL).
         try {
-          console.log('🔄 Attempting fallback payment confirmation via API...');
-          const { data: confirmData } = await api.post('/api/orders/confirm-payment', {
-            paymentIntentId: result.paymentIntent.id,
-            orderId: currentOrderId,
+          console.log('🔄 Attempting fallback payment confirmation...');
+          const apiBase = import.meta.env.VITE_API_BASE_URL || '';
+          const confirmResponse = await fetch(`${apiBase}/api/orders/confirm-payment`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+              paymentIntentId: result.paymentIntent.id,
+              orderId: currentOrderId
+            })
           });
 
-          console.log('✅ Payment confirmation successful:', confirmData);
-          toast.success('Payment confirmed! Order status updated.');
+          if (confirmResponse.ok) {
+            const confirmData = await confirmResponse.json();
+            console.log('✅ Payment confirmation successful:', confirmData);
+            toast.success('Payment confirmed! Order status updated.');
+          } else {
+            const errorData = await confirmResponse.json();
+            console.log('⚠️ Fallback confirmation failed:', errorData);
+            toast.success('Payment successful! Order being processed...');
+          }
         } catch (confirmError) {
-          console.log('⚠️ Payment confirmation error (will rely on Stripe webhook):', confirmError?.response?.data || confirmError.message);
-          // Do not show an additional error here to avoid confusing users;
-          // the Stripe webhook will still mark the order as paid when it arrives.
-          toast.success('Payment successful! Your order will update once Stripe finishes processing.');
+          console.log('⚠️ Payment confirmation error:', confirmError);
+          toast.success('Payment successful! Order being processed...');
         }
 
         // Clear cart state immediately
