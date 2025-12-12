@@ -5,6 +5,25 @@ const sendEmail = require("../utils/sendEmail");
 const crypto = require("crypto");
 
 const isProd = process.env.NODE_ENV === "production";
+const rawFrontendUrl = process.env.FRONTEND_URL;
+
+function getFrontendUrl() {
+  let url = rawFrontendUrl || (isProd ? "" : "http://localhost:5173");
+
+  if (!url) {
+    return "http://localhost:5173";
+  }
+
+  if (!/^https?:\/\//i.test(url)) {
+    if (url.includes("localhost")) {
+      url = `http://${url}`;
+    } else {
+      url = `https://${url}`;
+    }
+  }
+
+  return url.replace(/\/+$/, "");
+}
 const authCookieOptions = {
   httpOnly: true,
   secure: isProd,
@@ -192,7 +211,7 @@ const forgotPassword = asyncHandler(async (req, res) => {
   await user.save({ validateBeforeSave: false });
 
   // Create reset url - point to frontend reset page
-  const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+  const resetUrl = `${getFrontendUrl()}/reset-password/${resetToken}`;
 
   const message = `
     You are receiving this email because you (or someone else) has requested the reset of a password.
@@ -268,14 +287,14 @@ const googleAuthSuccess = asyncHandler(async (req, res) => {
     // Redirect based on user role to appropriate dashboard
     if (req.user.role === 'admin') {
       console.log('🚀 Redirecting admin to admin dashboard');
-      res.redirect(`${process.env.FRONTEND_URL}/admin?auth=success`);
+      res.redirect(`${getFrontendUrl()}/admin?auth=success`);
     } else {
       console.log('🚀 Redirecting customer to home page');
-      res.redirect(`${process.env.FRONTEND_URL}/?auth=success`);
+      res.redirect(`${getFrontendUrl()}/?auth=success`);
     }
   } else {
     console.log('❌ Google OAuth failed - no user found');
-    res.redirect(`${process.env.FRONTEND_URL}/login?error=auth_failed`);
+    res.redirect(`${getFrontendUrl()}/login?error=auth_failed`);
   }
 });
 
@@ -283,7 +302,7 @@ const googleAuthSuccess = asyncHandler(async (req, res) => {
 // @route   GET /api/auth/google/failure
 // @access  Public
 const googleAuthFailure = asyncHandler(async (req, res) => {
-  res.redirect(`${process.env.FRONTEND_URL}/login?error=auth_failed`);
+  res.redirect(`${getFrontendUrl()}/login?error=auth_failed`);
 });
 
 // @desc    Debug Google OAuth configuration
@@ -295,7 +314,7 @@ const googleAuthDebug = asyncHandler(async (req, res) => {
     callbackURL: `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/auth/google/callback`,
     clientID: process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Not Set',
     clientSecret: process.env.GOOGLE_CLIENT_SECRET ? 'Set' : 'Not Set',
-    frontendURL: process.env.FRONTEND_URL,
+    frontendURL: getFrontendUrl(),
     backendURL: process.env.BACKEND_URL,
   });
 });
