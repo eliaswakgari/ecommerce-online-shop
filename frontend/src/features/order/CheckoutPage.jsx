@@ -3,11 +3,12 @@ import { CardElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { useDispatch, useSelector } from "react-redux";
 import Button from "../../components/ui/Button.jsx";
 import { placeOrder, clearPaymentState } from "./orderSlice.js";
-import { clearCart} from "../cart/cartSlice.js";
+import { clearCart } from "../cart/cartSlice.js";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import useCart from "../../hooks/useCart.js";
 import formatCurrency from "../../utils/formatCurrency.js";
+import api from "../../api/axiosInstance.js";
 
 export default function CheckoutPage() {
   const dispatch = useDispatch();
@@ -69,36 +70,24 @@ export default function CheckoutPage() {
           status: result.paymentIntent.status,
           orderId: currentOrderId
         });
-        
+
         toast.success("Payment successful! Confirming order...");
 
-        // Immediate fallback confirmation for dev environments
+        // Immediate fallback confirmation when webhooks are not available or delayed
         try {
-          console.log('🔄 Attempting fallback payment confirmation...');
-          const confirmResponse = await fetch('/api/orders/confirm-payment', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            credentials: 'include',
-            body: JSON.stringify({
-              paymentIntentId: result.paymentIntent.id,
-              orderId: currentOrderId
-            })
+          console.log('🔄 Attempting fallback payment confirmation via API...');
+          const { data: confirmData } = await api.post('/api/orders/confirm-payment', {
+            paymentIntentId: result.paymentIntent.id,
+            orderId: currentOrderId,
           });
-          
-          if (confirmResponse.ok) {
-            const confirmData = await confirmResponse.json();
-            console.log('✅ Payment confirmation successful:', confirmData);
-            toast.success('Payment confirmed! Order status updated.');
-          } else {
-            const errorData = await confirmResponse.json();
-            console.log('⚠️ Fallback confirmation failed:', errorData);
-            toast.success('Payment successful! Order being processed...');
-          }
+
+          console.log('✅ Payment confirmation successful:', confirmData);
+          toast.success('Payment confirmed! Order status updated.');
         } catch (confirmError) {
-          console.log('⚠️ Payment confirmation error:', confirmError);
-          toast.success('Payment successful! Order being processed...');
+          console.log('⚠️ Payment confirmation error (will rely on Stripe webhook):', confirmError?.response?.data || confirmError.message);
+          // Do not show an additional error here to avoid confusing users;
+          // the Stripe webhook will still mark the order as paid when it arrives.
+          toast.success('Payment successful! Your order will update once Stripe finishes processing.');
         }
 
         // Clear cart state immediately
@@ -149,7 +138,7 @@ export default function CheckoutPage() {
               </div>
               <h2 className="text-responsive-2xl font-bold text-gray-900">Delivery Details</h2>
             </div>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Street Address</label>
@@ -160,7 +149,7 @@ export default function CheckoutPage() {
                   onChange={(e) => setShipping({ ...shipping, address: e.target.value })}
                 />
               </div>
-              
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
@@ -181,7 +170,7 @@ export default function CheckoutPage() {
                   />
                 </div>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Country</label>
                 <input
@@ -217,8 +206,8 @@ export default function CheckoutPage() {
                     <h3 className="text-lg sm:text-xl font-semibold text-gray-900">Payment Information</h3>
                   </div>
                   <div className="border-2 border-gray-200 rounded-lg p-3 sm:p-4 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/20 transition-all duration-300">
-                    <CardElement 
-                      options={{ 
+                    <CardElement
+                      options={{
                         hidePostalCode: true,
                         style: {
                           base: {
@@ -230,11 +219,11 @@ export default function CheckoutPage() {
                             },
                           },
                         },
-                      }} 
+                      }}
                     />
                   </div>
                 </div>
-                
+
                 <Button
                   className="w-full py-3 sm:py-4 text-base sm:text-lg font-medium bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700"
                   onClick={pay}
@@ -253,7 +242,7 @@ export default function CheckoutPage() {
                     `Complete Payment ${formatCurrency(total)}`
                   )}
                 </Button>
-                
+
                 {/* Security Notice */}
                 <div className="flex items-center justify-center gap-2 text-xs sm:text-sm text-gray-500">
                   <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
@@ -277,14 +266,14 @@ export default function CheckoutPage() {
               </div>
               <h2 className="text-responsive-2xl font-bold text-gray-900">Order Summary</h2>
             </div>
-            
+
             {/* Cart Items */}
             <div className="space-y-3 sm:space-y-4 mb-6">
               {items.map((item) => {
                 const itemTotal = (item.product?.price || item.price) * item.quantity;
                 return (
                   <div key={item._id || item.id || item.productId} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                    <img 
+                    <img
                       src={item.product?.images?.[0]?.url || item.product?.image || "https://via.placeholder.com/60"}
                       alt={item.product?.name || "Product"}
                       className="w-12 h-12 sm:w-16 sm:h-16 object-cover rounded-lg"
@@ -306,7 +295,7 @@ export default function CheckoutPage() {
                 );
               })}
             </div>
-            
+
             {/* Price Breakdown */}
             <div className="space-y-3 text-sm sm:text-base">
               <div className="flex justify-between items-center">
@@ -321,7 +310,7 @@ export default function CheckoutPage() {
                 <span className="text-gray-600">Tax (10%):</span>
                 <span className="font-medium text-gray-900">{formatCurrency(subtotal * 0.1)}</span>
               </div>
-              
+
               <div className="border-t-2 border-gray-200 pt-3">
                 <div className="flex justify-between items-center">
                   <span className="text-lg sm:text-xl font-bold text-gray-900">Total:</span>
@@ -329,7 +318,7 @@ export default function CheckoutPage() {
                 </div>
               </div>
             </div>
-            
+
             {/* Additional Info */}
             <div className="mt-6 pt-6 border-t border-gray-200">
               <div className="space-y-2 text-xs sm:text-sm text-gray-500">
