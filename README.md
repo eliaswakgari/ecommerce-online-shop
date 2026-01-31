@@ -1,4 +1,4 @@
-# Ecommerce Online Shop
+# Ecommerce Online Shopping
 
 Full‑stack e-commerce application with a React (Vite) frontend and a Node.js/Express backend, featuring authentication (email + Google OAuth), product catalog, cart/checkout, Stripe payments, order management, Cloudinary image uploads, and a product review system.
 
@@ -202,6 +202,7 @@ This repository includes several focused guides:
 ## License
 
 No license file is currently included. If you plan to open-source this project, add a `LICENSE` file and update this section.
+
 
 
 
